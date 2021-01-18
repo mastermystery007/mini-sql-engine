@@ -1,6 +1,6 @@
 import re
 import sqlparse
-from sqlparse.sql import IdentifierList, Identifier, Where, Comparison, Parenthesis
+from sqlparse.sql import IdentifierList, Identifier, Where, Comparison, Parenthesis,Function
 from sqlparse.tokens import Keyword, DML, Wildcard
 
 
@@ -86,6 +86,7 @@ class Query():
     groupbylist = []
     orderbylist = []
     havinglist = []
+    show_columns = []
 
     def __init__(self, query, db):
         self.dbase = db
@@ -142,6 +143,9 @@ class Query():
                         self.add_token_to_list(token.value)
                     if token.value.upper() == "MAX":
                         self.add_token_to_list(token.value)
+                    if token.value.upper() == "MIN":
+                        self.add_token_to_list(token.value)
+                    
 
                 #if token.ttype is Wildcard:
 
@@ -154,6 +158,9 @@ class Query():
                     self.add_token_to_list(token.value)
 
                 if isinstance(token, Identifier):
+                    self.add_token_to_list(token.value)
+                
+                if isinstance(token, Function):
                     self.add_token_to_list(token.value)
 
                 if isinstance(token, Where):
@@ -168,32 +175,20 @@ class Query():
                     temp2 = temp1.replace('(', '')
                     self.add_token_to_list(temp2)
 
-    """
-    def check_row(val1,val2,op_type):
-        op_type = int(op_type)
-        val1=int(val1)
-        val2=int(val2)
-        if op_type == 1 and val1<val2:
-            return True
-        if op_type == 2 and val1>val2:
-            return True
-        if op_type == 3 and val1<=val2:
-            return True
-        if op_type == 4 and val1>=val2:
-            return True
-        if op_type == 5 and val1==val2:
-            return True
-        return False
-    """
+
 
     def executQuery(self):
         self.loadTables()  # from
         self.whereQuery()
+        self.groupbyQuery()
+        self.selectQuery()
+        for row in self.table.table:
+            print (row)
 
         """
-        self.groupbyQuery()
+        
         self.orderQuery()
-        self.selectQuery()
+        
         """
 
     def loadTables(self):
@@ -240,7 +235,7 @@ class Query():
         if "=" == operator:
             operator_type = 0
 
-        return operator
+        return operator_type
     
     def whereQuery(self):
         print(self.wherelist)
@@ -275,9 +270,44 @@ class Query():
                     print("the operator type is "+str(operator_type))
                     newtable = self.resolveWhereQuery(
                         operator_type, self.wherelist[1], int(self.wherelist[3]))
+                     
             else:
                 newtable = self.resolveWhereQuery(
                     operator_type, int(self.wherelist[1]), self.wherelist[3])
+
+        if and_or_present == 1:
+            if self.is_column(self.wherelist[1]):
+                p1=self.wherelist[1]
+            else:
+                p1=int(self.wherelist[1])
+
+            if self.is_column(self.wherelist[3]):
+                p2=self.wherelist[3]
+            else:
+                p2=int(self.wherelist[3])
+            
+            if self.is_column(self.wherelist[5]):
+                p3=self.wherelist[5]
+            else:
+                p3=int(self.wherelist[5])
+            
+            if self.is_column(self.wherelist[7]):
+                p4=self.wherelist[7]
+            else:
+                p4=int(self.wherelist[7])
+            
+            print(self.get_operator(self.wherelist[2]))
+            print(self.get_operator(self.wherelist[6]))
+
+            newtable1 =  self.resolveWhereQuery(self.get_operator(self.wherelist[2]), p1, p2)
+            newtable2 =  self.resolveWhereQuery(self.get_operator(self.wherelist[6]),p3, p4)
+
+            for row in self.table.table:
+                if row in newtable1 and row in newtable2:
+                    newtable.append(row)
+        
+
+
 
         if and_or_present == 2:
             if self.is_column(self.wherelist[1]):
@@ -299,14 +329,117 @@ class Query():
                 p4=self.wherelist[7]
             else:
                 p4=int(self.wherelist[7])
+            
+            print(self.get_operator(self.wherelist[2]))
+            print(self.get_operator(self.wherelist[6]))
 
-            newtable1 =  self.resolveWhereQuery(get_operator(self.wherelist[2]), p1, p2)
-            newtable2 =  self.resolveWhereQuery(get_operator(self.wherelist[6]),p3, p4)
+            newtable1 =  self.resolveWhereQuery(self.get_operator(self.wherelist[2]), p1, p2)
+            newtable2 =  self.resolveWhereQuery(self.get_operator(self.wherelist[6]),p3, p4)
 
-            for row in newtable1:
-                print(row)
-            print("******")
+            for row in self.table.table:
+                if row in newtable1 or row in newtable2:
+                    newtable.append(row)
 
+        self.table.table = newtable 
+
+
+    def selectQuery(self):
+        print(self.selectlist)
+        for i in range (0,len(self.selectlist)):
+            if self.selectlist[i]=="MAX":
+                a = i+1
+                c = self.selectlist[a]
+                print("select list col is "+self.selectlist[a])
+                self.domaxontable(c)
+            if self.selectlist[i]=="MIN":
+                a = i+1
+                c = self.selectlist[a]
+                print("select list col is"+self.selectlist[a])
+                self.dominontable(c)
+            if self.selectlist[i]=="AVG":
+                a = i+1
+                c = self.selectlist[a]
+                print("select list col is"+self.selectlist[a])
+                self.doavgontable(c)
+            if self.selectlist[i]=="SUM":
+                a = i+1
+                c = self.selectlist[a]
+                print("select list col is"+self.selectlist[a])
+                self.dosumontable(c)
+
+    def domaxontable(self , col_name):
+        col_num = 0
+        for i in range (0,len(self.table.cols_names)):
+            if col_name ==self.table.cols_names[i]:
+                col_num = i
+                break
+        for row in self.table.table:
+            row[col_num] = max(row[col_num])
+
+    def dominontable(self , col_name):
+        col_num = -1
+        for i in range (0,len(self.table.cols_names)):
+            if col_name ==self.table.cols_names[i]:
+                col_num = i
+                break
+        for row in self.table.table:
+            row[col_num] = min(row[col_num])
+
+    def doavgontable(self,col_name):
+         
+        col_num = 0
+        for i in range (0,len(self.table.cols_names)):
+            if col_name ==self.table.cols_names[i]:
+                col_num = i
+                break
+        for row in self.table.table:
+            row[col_num] = sum(row[col_num]) / len(row[col_num]) 
+
+    def dosumontable(self,col_name):
+        col_num = 0
+        for i in range (0,len(self.table.cols_names)):
+            if col_name ==self.table.cols_names[i]:
+                col_num = i
+                break
+        for row in self.table.table:
+            row[col_num] = sum(row[col_num])
+
+    def groupbyQuery(self):
+        print (self.groupbylist)
+        table_3=[]
+        col_num = 0
+        for i in range (0,len(self.table.cols_names)):
+            if self.groupbylist[0] == self.table.cols_names[i]:
+                col_num=i
+        print ("col_num is "+str(col_num))
+        for i in range (0,len(self.table.table)):
+            row1 = self.table.table[i]
+            gbv = row1[col_num]
+            ispresent = False
+            for j in range (0,len(table_3)):
+                row2 = table_3[j]
+                if  int(gbv) in row2[col_num] :
+                    
+                    for p in range (0,len(row1)):
+                        if p==col_num:
+                            continue
+                        else:
+                            table_3[j][p].append(int(row1[p]))
+
+                        
+                            
+                    ispresent = True
+                    break
+
+            if not ispresent:
+                finallist =[]
+                for q in range (0,len(row1)):
+                        finallist.append([int(row1[q])])
+                table_3.append(finallist)
+
+        self.table.table = table_3
+                
+            
         
     def resolveWhereQuery(self, operator_type, col1, col2):
         tablefinal = []
@@ -412,7 +545,7 @@ class Query():
 
 
 
-abc = "Select col1 ,MAX( col2 ) from table1,table2 WHERE A > 1 ;"
+abc = "Select AVG (D),AVG (C)    from table1 , table2 WHERE A > 5 GROUP BY B;"
 mydb = Database("metadata.txt")
 queryt = Query(abc, mydb)
 queryt.parse_query()
